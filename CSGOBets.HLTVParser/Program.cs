@@ -1,2 +1,5 @@
-﻿// See https://aka.ms/new-console-template for more information
-Console.WriteLine("Hello, World!");
+﻿using CSGOBets.HLTVParser.Services;
+
+var parser = new MatchesParser();
+var preMathes = await parser.GetPreMatches();
+
