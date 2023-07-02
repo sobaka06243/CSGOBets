@@ -2,9 +2,7 @@
 using CSGOBets.Services.Models;
 using HtmlAgilityPack;
 using OpenQA.Selenium.Chrome;
-using OpenQA.Selenium.DevTools.V112.WebAuthn;
 using System.Text.RegularExpressions;
-using static System.Collections.Specialized.BitVector32;
 
 namespace CSGOBets.HLTVParser.Services;
 
