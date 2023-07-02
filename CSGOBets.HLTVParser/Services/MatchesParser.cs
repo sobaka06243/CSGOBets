@@ -18,6 +18,7 @@ public class MatchesParser : IMatchesLoader
 
     public Task<IEnumerable<PreMatch>> GetPreMatches()
     {
+        _matchesUrls.Clear();
         List<PreMatch> preMatches = new List<PreMatch>();
         using var chrome = new ChromeDriver();
         chrome.Url = "https://www.hltv.org/matches";
