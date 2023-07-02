@@ -10,7 +10,7 @@ namespace CSGOBets.HLTVParser.Services;
 
 public class MatchesParser : IMatchesLoader
 {
-    private List<string> _matchesUrls = new List<string>();
+    private Dictionary<PreMatch, string> _matchesUrls = new Dictionary<PreMatch, string>();
     public Task<IEnumerable<MatchResult>> GetLastResults(PreMatch preMatch, int weeks)
     {
         throw new NotImplementedException();
@@ -62,8 +62,9 @@ public class MatchesParser : IMatchesLoader
                 {
                     continue;
                 }
-                preMatches.Add(new PreMatch(teamName1, teamName2, martchDateTime, matchMeta));
-                _matchesUrls.Add("https://www.hltv.org" + matchUrl);
+                var preMatch = new PreMatch(teamName1, teamName2, martchDateTime, matchMeta);
+                preMatches.Add(preMatch);
+                _matchesUrls.Add(preMatch, "https://www.hltv.org" + matchUrl);
             }
         }
         return Task.FromResult(preMatches.AsEnumerable());
