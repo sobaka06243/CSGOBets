@@ -2,6 +2,8 @@
 using CSGOBets.Services.Models;
 using HtmlAgilityPack;
 using OpenQA.Selenium.Chrome;
+using OpenQA.Selenium.Interactions;
+using System.IO;
 using System.Text.RegularExpressions;
 
 namespace CSGOBets.HLTVParser.Services;
@@ -9,9 +11,52 @@ namespace CSGOBets.HLTVParser.Services;
 public class MatchesParser : IMatchesLoader
 {
     private Dictionary<PreMatch, string> _matchesUrls = new Dictionary<PreMatch, string>();
-    public Task<IEnumerable<MatchResult>> GetLastResults(PreMatch preMatch, int weeks)
+
+    public MatchesParser()
     {
-        throw new NotImplementedException();
+
+    }
+
+    public async Task<IEnumerable<MatchResult>> GetLastResults(PreMatch preMatch, int weeks)
+    {
+        if (!_matchesUrls.TryGetValue(preMatch, out var url))
+        {
+            return Enumerable.Empty<MatchResult>();
+        }
+        string preMatchHtml;
+        using (var chromeMatchPage = new ChromeDriver())
+        {
+            chromeMatchPage.Url = url;
+            await Task.Delay(TimeSpan.FromSeconds(10));
+            preMatchHtml = chromeMatchPage.PageSource;
+        }
+        var doc = new HtmlDocument();
+        doc.LoadHtml(preMatchHtml);
+        var pastMathesTableNodes = LastResultsParserHelper.GetPastMatchesTable(doc.DocumentNode);
+        List<MatchResult> matchResults = new List<MatchResult>();
+        foreach (var table in pastMathesTableNodes)
+        {
+            var trNodes = table.Descendants("tr");
+            foreach (var tr in trNodes)
+            {
+                var week = LastResultsParserHelper.GetMatchWeekAgo(tr);
+                if (week is null)
+                {
+                    continue;
+                }
+                if (week > weeks)
+                {
+                    break;
+                }
+                var matchResult = await LastResultsParserHelper.GetMatchResult(tr);
+                if(matchResult is null)
+                {
+                    continue;
+                }
+                matchResults.Add(matchResult);
+            }
+        }
+        return matchResults;
     }
 
     public Task<IEnumerable<PreMatch>> GetPreMatches()
@@ -23,40 +68,40 @@ public class MatchesParser : IMatchesLoader
         var html = chrome.PageSource;
         var doc = new HtmlDocument();
         doc.LoadHtml(html);
-        var upcomingMatchesSection = GetUpcomingMatchesSection(doc.DocumentNode);
+        var upcomingMatchesSection = PreMatchParserHelper.GetUpcomingMatchesSection(doc.DocumentNode);
         foreach (var section in upcomingMatchesSection)
         {
 
-            var matchDate = GetMatchDate(section);
+            var matchDate = PreMatchParserHelper.GetMatchDate(section);
             if (matchDate is null)
             {
                 continue;
             }
-            var upcomingMatchNodes = GetUpcomingMatches(section);
+            var upcomingMatchNodes = PreMatchParserHelper.GetUpcomingMatches(section);
             foreach (var match in upcomingMatchNodes)
             {
-                var matchTime = GetMatchTime(match);
+                var matchTime = PreMatchParserHelper.GetMatchTime(match);
                 if (matchTime is null)
                 {
                     continue;
                 }
                 var martchDateTime = new DateTime(matchDate.Value.Year, matchDate.Value.Month, matchDate.Value.Day, matchTime.Value.Hour, matchTime.Value.Minute, 0);
-                MatchMeta matchMeta = GetMatchMeta(match);
+                MatchMeta matchMeta = PreMatchParserHelper.GetMatchMeta(match);
                 if (matchMeta == MatchMeta.Underfined)
                 {
                     continue;
                 }
-                var teamName1 = GetTeamName1(match);
+                var teamName1 = PreMatchParserHelper.GetTeamName1(match);
                 if (teamName1 is null)
                 {
                     continue;
                 }
-                var teamName2 = GetTeamName2(match);
+                var teamName2 = PreMatchParserHelper.GetTeamName2(match);
                 if (teamName2 is null)
                 {
                     continue;
                 }
-                var matchUrl = GetMatchInfoUrl(match);
+                var matchUrl = PreMatchParserHelper.GetMatchInfoUrl(match);
                 if (matchUrl is null)
                 {
                     continue;
@@ -69,102 +114,5 @@ public class MatchesParser : IMatchesLoader
         return Task.FromResult(preMatches.AsEnumerable());
     }
 
-    private IEnumerable<HtmlNode> GetUpcomingMatchesSection(HtmlNode node)
-    {
-        return node.Descendants("div").Where(d => d.HasClass("upcomingMatchesSection"));
-    }
 
-    private DateTime? GetMatchDate(HtmlNode node)
-    {
-        var matchDayHeadlineNodes = node.Descendants("div").FirstOrDefault(s => s.HasClass("matchDayHeadline"));
-        if (matchDayHeadlineNodes is null)
-        {
-            return null;
-        }
-        var strMatchDate = matchDayHeadlineNodes.InnerText;
-        Regex regex = new Regex(@"\d{4}-\d{2}-\d{2}");
-        var regexMatchDate = regex.Match(strMatchDate);
-        if (!DateTime.TryParseExact(regexMatchDate.Value, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var matchDate))
-        {
-            return null;
-        }
-        return matchDate;
-    }
-
-    private IEnumerable<HtmlNode> GetUpcomingMatches(HtmlNode node)
-    {
-        return node.Descendants("div").Where(s => s.HasClass("upcomingMatch"));
-    }
-
-    private TimeOnly? GetMatchTime(HtmlNode node)
-    {
-        var matchTimeNode = node.Descendants("div").FirstOrDefault(s => s.HasClass("matchTime"));
-        if (matchTimeNode is null)
-        {
-            return null;
-        }
-        if (!TimeOnly.TryParse(matchTimeNode.InnerText, out var matchTime))
-        {
-            return null;
-        }
-        return matchTime;
-    }
-
-    private MatchMeta GetMatchMeta(HtmlNode node)
-    {
-        var matchMetaNode = node.Descendants("div").FirstOrDefault(s => s.HasClass("matchMeta"));
-        if (matchMetaNode is null)
-        {
-            return MatchMeta.Underfined;
-        }
-        switch (matchMetaNode.InnerText)
-        {
-            case "bo1":
-                return MatchMeta.Bo1;
-            case "bo3":
-                return MatchMeta.Bo3;
-            default:
-                return MatchMeta.Underfined;
-        }
-    }
-
-    private string? GetTeamName1(HtmlNode node)
-    {
-        return GetTeamName(node, "team1");
-    }
-
-    private string? GetTeamName2(HtmlNode node)
-    {
-        return GetTeamName(node, "team2");
-    }
-
-    private string? GetTeamName(HtmlNode node, string className)
-    {
-        var teamNode = node.Descendants("div").FirstOrDefault(s => s.HasClass(className));
-        if (teamNode is null)
-        {
-            return null;
-        }
-        var matchTeamNameNode = teamNode.Descendants("div").FirstOrDefault(s => s.HasClass("matchTeamName"));
-        if (matchTeamNameNode is null)
-        {
-            return null;
-        }
-        return matchTeamNameNode.InnerText;
-    }
-
-    private string? GetMatchInfoUrl(HtmlNode node)
-    {
-        var matchHrefNode = node.Descendants("a").FirstOrDefault(s => s.HasClass("match"));
-        if (matchHrefNode is null)
-        {
-            return null;
-        }
-        var hrefAttribute = matchHrefNode.GetAttributes().FirstOrDefault(a => a.Name == "href");
-        if (hrefAttribute is null)
-        {
-            return null;
-        }
-        return hrefAttribute.Value;
-    }
 }

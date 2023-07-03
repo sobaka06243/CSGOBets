@@ -3,5 +3,6 @@
 public enum VetoAction
 {
     Picked,
-    Removed
+    Removed,
+    WasLeftOver
 }
