@@ -5,6 +5,7 @@ using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Interactions;
 using System.IO;
 using System.Text.RegularExpressions;
+using static System.Net.WebRequestMethods;
 
 namespace CSGOBets.HLTVParser.Services;
 
@@ -32,7 +33,12 @@ public class MatchesParser : IMatchesLoader
         }
         var doc = new HtmlDocument();
         doc.LoadHtml(preMatchHtml);
-        var pastMathesTableNodes = LastResultsParserHelper.GetPastMatchesTable(doc.DocumentNode);
+        var dataPastMathesCore = doc.DocumentNode.Descendants("div").FirstOrDefault(d => d.GetAttributes().Any(a => a.Name == "data-past-matches-core"));
+        if (dataPastMathesCore is null)
+        {
+            return Enumerable.Empty<MatchResult>();
+        }
+        var pastMathesTableNodes = dataPastMathesCore.Descendants("table").Where(d => d.HasClass("past-matches-table"));
         List<MatchResult> matchResults = new List<MatchResult>();
         foreach (var table in pastMathesTableNodes)
         {
@@ -49,7 +55,7 @@ public class MatchesParser : IMatchesLoader
                     break;
                 }
                 var matchResult = await LastResultsParserHelper.GetMatchResult(tr);
-                if(matchResult is null)
+                if (matchResult is null)
                 {
                     continue;
                 }

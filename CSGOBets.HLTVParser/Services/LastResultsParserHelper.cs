@@ -1,20 +1,12 @@
 ﻿using CSGOBets.Services.Models;
 using HtmlAgilityPack;
 using OpenQA.Selenium.Chrome;
+using System.Text.RegularExpressions;
 
 namespace CSGOBets.HLTVParser.Services;
 
 public static class LastResultsParserHelper
 {
-    public static IEnumerable<HtmlNode> GetPastMatchesTable(HtmlNode node)
-    {
-        var dataPastMathesCore = node.Descendants("div").FirstOrDefault(d => d.GetAttributes().Any(a => a.Name == "data-past-matches-core"));
-        if (dataPastMathesCore is null)
-        {
-            return Enumerable.Empty<HtmlNode>();
-        }
-        return dataPastMathesCore.Descendants("table").Where(d => d.HasClass("past-matches-table"));
-    }
 
     public static async Task<MatchResult?> GetMatchResult(HtmlNode node)
     {
@@ -128,7 +120,49 @@ public static class LastResultsParserHelper
         {
             return null;
         }
-        return new MatchResult(team1, team2, vetoActions, mapResults);
+
+        var lineupNodes = resultMatchDoc.DocumentNode.Descendants("div").Where(d => d.HasClass("lineup"));
+        if (lineupNodes.Count() != 2)
+        {
+            return null;
+        }
+        List<(string Team, int Rank)> teamInfo = new List<(string, int)>();
+        foreach (var lineupNode in lineupNodes)
+        {
+            var boxHeadline = lineupNode.Descendants("div").FirstOrDefault(d => d.HasClass("box-headline"));
+            if (boxHeadline is null)
+            {
+                return null;
+            }
+            var boxHeadlineHrefs = boxHeadline.Descendants("a");
+            var teamName = boxHeadlineHrefs.FirstOrDefault()?.InnerText;
+            if (teamName is null)
+            {
+                return null;
+            }
+            var rankStr = boxHeadlineHrefs.LastOrDefault()?.InnerText;
+            if (rankStr is null)
+            {
+                return null;
+            }
+            rankStr = Regex.Match(rankStr, @"\d+").Value;
+            if (rankStr is null)
+            {
+                return null;
+            }
+            if (!int.TryParse(rankStr, out var rank))
+            {
+                return null;
+            }
+            teamInfo.Add(new (teamName, rank));
+        }
+        var teamRank1 = teamInfo.FirstOrDefault(i => i.Team == team1).Rank;
+        var teamRank2 = teamInfo.FirstOrDefault(i => i.Team == team2).Rank;
+        if(teamRank1 == 0 || teamRank2 == 0)
+        {
+            return null;
+        }
+        return new MatchResult(team1, team2, teamRank1, teamRank2,  vetoActions, mapResults);
     }
 
     public static int? GetMatchWeekAgo(HtmlNode node)
